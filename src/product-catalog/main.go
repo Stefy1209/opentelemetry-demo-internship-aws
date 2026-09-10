@@ -369,7 +369,7 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 		attribute.String("demo.product.id", req.Id),
 	)
 
-		found, err := getProductFromDB(ctx, req.Id)
+	found, err := getProductFromDB(ctx, req.Id)
 	if err != nil {
 		msg := fmt.Sprintf("Product Not Found: %s", req.Id)
 		span.SetStatus(otelcodes.Error, msg)
