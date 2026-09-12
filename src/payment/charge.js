@@ -39,7 +39,6 @@ module.exports.charge = async request => {
 
     const numberVariant = await OpenFeature.getClient().getNumberValue("paymentFailure", 0);
 
-
     const {
       creditCardNumber: number,
       creditCardExpirationYear: year,
