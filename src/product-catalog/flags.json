@@ -4,7 +4,9 @@
     "productCatalogFailure": {
       "defaultValue": false,
       "description": "simulates a potential product catalog failure scenario",
-      "flagType": "boolean"
+      "flagType": "boolean",
+      "enabled": false
+    }
     }
   }
 }
