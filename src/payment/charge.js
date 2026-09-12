@@ -37,7 +37,7 @@ module.exports.charge = async request => {
 
     await OpenFeature.setProviderAndWait(flagProvider);
 
-    const numberVariant = await OpenFeature.getClient().getNumberValue("paymentFailure", 0);
+    const numberVariant = 0; // Disable intentional payment failures by setting the feature flag to 0.
 
     if (numberVariant > 0) {
       // n% chance to fail with demo.user_context.loyalty_level=gold
