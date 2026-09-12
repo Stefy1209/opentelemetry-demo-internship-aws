@@ -160,7 +160,10 @@ type checkout struct {
 
 func main() {
 	var port string
-	mustMapEnv(&port, "CHECKOUT_PORT")
+	port = os.Getenv("CHECKOUT_PORT")
+	if port == "" {
+		port = "8080"
+	} // Default to port 8080 if CHECKOUT_PORT is not set.
 
 	tp := initTracerProvider()
 	defer func() {
