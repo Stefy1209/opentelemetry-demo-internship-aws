@@ -33,6 +33,9 @@ const logger = pino(transport, {
     level: (label) => {
       return { 'level': label };
     },
+    error: (label) => {
+      return { 'level': 'error' };
+    },
   },
 });
 
