@@ -128,6 +128,7 @@ func initLoggerProvider() *sdklog.LoggerProvider {
 
 	logExporter, err := otlploghttp.New(ctx)
 	if err != nil {
+		logger.Error(fmt.Sprintf("new otlp log http exporter failed: %v", err))
 		return nil
 	}
 
