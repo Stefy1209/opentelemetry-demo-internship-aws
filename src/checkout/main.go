@@ -213,7 +213,8 @@ func main() {
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_ADDR")
+	svc.shippingSvcAddr = "shipping-service:50051" // Corrected address for shipping service
+	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_ADDR") // Ensure environment variable is still checked for overrides or logging purposes.
 	c := mustCreateClient(svc.shippingSvcAddr)
 	svc.shippingSvcClient = pb.NewShippingServiceClient(c)
 	defer c.Close()
