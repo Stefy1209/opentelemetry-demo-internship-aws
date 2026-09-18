@@ -46,7 +46,14 @@ func CreateKafkaProducer(brokers []string, logger *slog.Logger) (sarama.AsyncPro
 
 	// Sarama has an issue in a single broker kafka if the kafka broker is restarted.
 	// This setting is to prevent that issue from manifesting itself, but may swallow failed messages.
-	saramaConfig.Producer.RequiredAcks = sarama.NoResponse
+	saramaConfig.Producer.RequiredAcks = sarama.WaitForLocal
+
+	// Set flush frequency to optimize latency
+	saramaConfig.Producer.Flush.Frequency = 500 * time.Millisecond // Adjust as needed for your use case
+
+	saramaConfig.Version = ProtocolVersion
+
+	// So we can know the partition and offset of messages.
 
 	saramaConfig.Version = ProtocolVersion
 
