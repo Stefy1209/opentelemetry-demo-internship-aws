@@ -216,7 +216,7 @@ func main() {
 	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_ADDR")
 	c := mustCreateClient(svc.shippingSvcAddr)
 	svc.shippingSvcClient = pb.NewShippingServiceClient(c)
-	defer c.Close()
+	defer c.Close() // Ensure SHIPPING_ADDR is correctly set and used for the client initialization.
 
 	mustMapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_ADDR")
 	c = mustCreateClient(svc.productCatalogSvcAddr)
