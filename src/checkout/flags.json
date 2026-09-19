@@ -7,7 +7,7 @@
       "flagType": "integer"
     },
     "paymentUnreachable": {
-      "defaultValue": false,
+      "defaultValue": true,
       "description": "simulates payment unreachable issue",
       "flagType": "boolean"
     }
