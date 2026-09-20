@@ -59,6 +59,7 @@ public class ValkeyCartStore : ICartStore
         _redisConnectionOptions.ReconnectRetryPolicy = new ExponentialRetry(1000);
 
         _redisConnectionOptions.KeepAlive = 180;
+        _redisConnectionOptions.ConnectTimeout = 5000; // Set connection timeout to 5000ms (5 seconds) to reduce latency issues.
     }
 
     public ConnectionMultiplexer GetConnection()
