@@ -55,7 +55,7 @@ if (ipv6_enabled == "true") {
   logger.info(`Overwriting Localhost IP: ${ip}`)
 }
 
-const address = ip + `:${process.env['PAYMENT_PORT']}`;
+const address = ip + `:${process.env['PAYMENT_PORT'] ?? 8080}`;
 
 server.bindAsync(address, grpc.ServerCredentials.createInsecure(), (err, port) => {
   if (err) {
