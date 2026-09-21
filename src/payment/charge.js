@@ -99,6 +99,7 @@ module.exports.charge = async request => {
 
     return { transactionId };
   } catch (err) {
+    logger.error({ err }, 'Payment charge failed.');
     span.recordException(err);
     span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
     span.setAttribute(ATTR_ERROR_TYPE, err.name || 'Error');
