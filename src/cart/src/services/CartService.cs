@@ -79,7 +79,6 @@ public class CartService : Oteldemo.CartService.CartServiceBase
 
         try
         {
-            var cartFailureRate = await _featureFlagHelper.GetDoubleValueAsync("cartFailure", 0);
             await _cartStore.EmptyCartAsync(request.UserId);
         }
         catch (RpcException ex)
