@@ -5,10 +5,6 @@ const { ATTR_ERROR_TYPE } = require('@opentelemetry/semantic-conventions');
 const cardValidator = require('simple-card-validator');
 const { v4: uuidv4 } = require('uuid');
 
-const { OpenFeature } = require('@openfeature/server-sdk');
-const { FlagdProvider } = require('@openfeature/flagd-provider');
-const flagProvider = new FlagdProvider();
-
 const logger = require('./logger');
 const tracer = trace.getTracer('payment');
 const meter = metrics.getMeter('payment');
@@ -33,19 +29,6 @@ module.exports.charge = async request => {
 
     if (syntheticRequest) {
       span.setAttribute('user_agent.synthetic.type', 'test');
-    }
-
-    await OpenFeature.setProviderAndWait(flagProvider);
-
-    const numberVariant = await OpenFeature.getClient().getNumberValue("paymentFailure", 0);
-
-    if (numberVariant > 0) {
-      // n% chance to fail with demo.user_context.loyalty_level=gold
-      if (Math.random() < numberVariant) {
-        span.setAttributes({'demo.user_context.loyalty_level': 'gold' });
-
-        throw new Error('Payment request failed. Invalid token. demo.user_context.loyalty_level=gold');
-      }
     }
 
     const {
