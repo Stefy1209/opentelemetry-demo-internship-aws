@@ -46,7 +46,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/XSAM/otelsql"
-	flags "github.com/opentelemetry/opentelemetry-demo/src/product-catalog/flags"
 )
 
 type productCatalog struct {
@@ -408,6 +407,3 @@ func (p *productCatalog) SearchProducts(ctx context.Context, req *pb.SearchProdu
 	return &pb.SearchProductsResponse{Results: result}, nil
 }
 
-func (p *productCatalog) checkProductFailure(ctx context.Context, id string) bool {
-	return flags.ProductCatalogFailure.Value(ctx, openfeature.NewTargetlessEvaluationContext(map[string]any{"product_id": id}))
-}
