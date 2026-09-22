@@ -46,7 +46,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/XSAM/otelsql"
-	flags "github.com/opentelemetry/opentelemetry-demo/src/product-catalog/flags"
 )
 
 type productCatalog struct {
@@ -369,14 +368,6 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 		attribute.String("demo.product.id", req.Id),
 	)
 
-	// GetProduct will fail on a specific product when feature flag is enabled
-	if p.checkProductFailure(ctx, req.Id) {
-		msg := "Error: Product Catalog Fail Feature Flag Enabled"
-		span.SetStatus(otelcodes.Error, msg)
-		span.AddEvent(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
 	found, err := getProductFromDB(ctx, req.Id)
 	if err != nil {
 		msg := fmt.Sprintf("Product Not Found: %s", req.Id)
@@ -416,6 +407,3 @@ func (p *productCatalog) SearchProducts(ctx context.Context, req *pb.SearchProdu
 	return &pb.SearchProductsResponse{Results: result}, nil
 }
 
-func (p *productCatalog) checkProductFailure(ctx context.Context, id string) bool {
-	return flags.ProductCatalogFailure.Value(ctx, openfeature.NewTargetlessEvaluationContext(map[string]any{"product_id": id}))
-}
