@@ -194,7 +194,10 @@ func main() {
 		logger.Error((err.Error()))
 	}
 
-	provider, err := flagd.NewProvider()
+	provider, err := flagd.NewProvider(
+		flagd.WithHost(os.Getenv("FLAGD_HOST")),
+		flagd.WithPort(os.Getenv("FLAGD_PORT")),
+	)
 	if err != nil {
 		logger.Error("Error creating flagd provider", slog.Any("error", err))
 	}
