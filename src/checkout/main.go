@@ -370,7 +370,11 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 	shippingTrackingAttribute := attribute.String("demo.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
-	_ = cs.emptyUserCart(ctx, req.UserId)
+	go func() {
+		if err := cs.emptyUserCart(context.WithoutCancel(ctx), req.UserId); err != nil {
+			logger.Warn(fmt.Sprintf("failed to empty user cart: %+v", err))
+		}
+	}()
 
 	orderResult := &pb.OrderResult{
 		OrderId:            orderID.String(),
