@@ -370,7 +370,11 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 	shippingTrackingAttribute := attribute.String("demo.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
-	_ = cs.emptyUserCart(ctx, req.UserId)
+	go func() {
+		if err := cs.emptyUserCart(context.WithoutCancel(ctx), req.UserId); err != nil {
+			logger.Warn(fmt.Sprintf("failed to empty user cart: %+v", err))
+		}
+	}()
 
 	orderResult := &pb.OrderResult{
 		OrderId:            orderID.String(),
@@ -564,11 +568,6 @@ func (cs *checkout) convertCurrency(ctx context.Context, from *pb.Money, toCurre
 
 func (cs *checkout) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
 	paymentService := cs.paymentSvcClient
-	if flags.PaymentUnreachable.Value(ctx, openfeature.EvaluationContext{}) {
-		badAddress := "badAddress:50051"
-		c := mustCreateClient(badAddress)
-		paymentService = pb.NewPaymentServiceClient(c)
-	}
 
 	paymentResp, err := paymentService.Charge(ctx, &pb.ChargeRequest{
 		Amount:     amount,
@@ -702,17 +701,6 @@ func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderRes
 		return
 	}
 
-	ffValue := flags.KafkaQueueProblems.Value(ctx, openfeature.EvaluationContext{})
-	if ffValue > 0 {
-		logger.Info("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
-		for range ffValue {
-			go func(msg sarama.ProducerMessage) {
-				cs.KafkaProducerClient.Input() <- &msg
-				<-cs.KafkaProducerClient.Successes()
-			}(msg)
-		}
-		logger.Info(fmt.Sprintf("Done with #%d messages for overload simulation.", ffValue))
-	}
 }
 
 func createProducerSpan(ctx context.Context, msg *sarama.ProducerMessage) trace.Span {
