@@ -40,7 +40,6 @@ import oteldemo.Demo.Ad;
 import oteldemo.Demo.AdRequest;
 import oteldemo.Demo.AdResponse;
 import oteldemo.problempattern.GarbageCollectionTrigger;
-import oteldemo.problempattern.CPULoad;
 import dev.openfeature.contrib.providers.flagd.FlagdOptions;
 import dev.openfeature.contrib.providers.flagd.FlagdProvider;
 import dev.openfeature.sdk.Client;
@@ -200,9 +199,6 @@ public final class AdService {
         } else {
           logger.info("no baggage found in context");
         }
-
-        CPULoad cpuload = CPULoad.getInstance();
-        cpuload.execute(ffClient.getBooleanValue(AD_HIGH_CPU_FEATURE_FLAG, false, evaluationContext));
 
         span.setAttribute("demo.ad.context_keys", req.getContextKeysList().toString());
         span.setAttribute("demo.ad.context_keys.count", req.getContextKeysCount());
