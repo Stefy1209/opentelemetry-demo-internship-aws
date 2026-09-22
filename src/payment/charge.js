@@ -37,17 +37,6 @@ module.exports.charge = async request => {
 
     await OpenFeature.setProviderAndWait(flagProvider);
 
-    const numberVariant = await OpenFeature.getClient().getNumberValue("paymentFailure", 0);
-
-    if (numberVariant > 0) {
-      // n% chance to fail with demo.user_context.loyalty_level=gold
-      if (Math.random() < numberVariant) {
-        span.setAttributes({'demo.user_context.loyalty_level': 'gold' });
-
-        throw new Error('Payment request failed. Invalid token. demo.user_context.loyalty_level=gold');
-      }
-    }
-
     const {
       creditCardNumber: number,
       creditCardExpirationYear: year,
@@ -99,6 +88,7 @@ module.exports.charge = async request => {
 
     return { transactionId };
   } catch (err) {
+    logger.error({ err }, 'Payment charge failed.');
     span.recordException(err);
     span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
     span.setAttribute(ATTR_ERROR_TYPE, err.name || 'Error');
