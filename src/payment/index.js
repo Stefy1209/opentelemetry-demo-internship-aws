@@ -23,7 +23,7 @@ async function chargeServiceHandler(call, callback) {
     callback(null, response)
 
   } catch (err) {
-    logger.warn({ err })
+    logger.error({ err }, "Payment charge failed.")
 
     span?.setStatus({ code: opentelemetry.SpanStatusCode.ERROR, message: err.message })
     span?.setAttribute(ATTR_ERROR_TYPE, err.name || 'Error')
@@ -55,7 +55,7 @@ if (ipv6_enabled == "true") {
   logger.info(`Overwriting Localhost IP: ${ip}`)
 }
 
-const address = ip + `:${process.env['PAYMENT_PORT']}`;
+const address = ip + `:${process.env['PAYMENT_PORT'] ?? 8080}`;
 
 server.bindAsync(address, grpc.ServerCredentials.createInsecure(), (err, port) => {
   if (err) {
