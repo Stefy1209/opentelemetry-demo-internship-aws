@@ -352,7 +352,7 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
+		return nil, status.Errorf(codes.Unavailable, "failed to charge card: %+v", err)
 	}
 
 	span.AddEvent("charged",
