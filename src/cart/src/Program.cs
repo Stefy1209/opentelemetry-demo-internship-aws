@@ -51,7 +51,7 @@ builder.Services.AddSingleton<ICartStore>(x =>
 builder.Services.AddOpenFeature(openFeatureBuilder =>
 {
     openFeatureBuilder
-        .AddProvider(_ => new FlagdProvider())
+        .AddProvider(_ => new FlagdProvider(new Uri($"http://{builder.Configuration["FLAGD_HOST"]}:{builder.Configuration["FLAGD_PORT"]}")))
         .AddHook<MetricsHook>()
         .AddHook<TraceEnricherHook>();
 });
