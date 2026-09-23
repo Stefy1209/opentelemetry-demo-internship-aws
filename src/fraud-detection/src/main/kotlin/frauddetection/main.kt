@@ -5,6 +5,7 @@
 
 package frauddetection
 
+import com.google.protobuf.InvalidProtocolBufferException
 import org.apache.kafka.clients.consumer.ConsumerConfig.*
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.common.serialization.ByteArrayDeserializer
@@ -67,7 +68,12 @@ fun main() {
                         logger.info("FeatureFlag 'kafkaQueueProblems' is enabled, sleeping 1 second")
                         Thread.sleep(1000)
                     }
-                    val orders = OrderResult.parseFrom(record.value())
+                    val orders = try {
+                        OrderResult.parseFrom(record.value())
+                    } catch (e: InvalidProtocolBufferException) {
+                        logger.error("Failed to parse Kafka record at offset ${record.offset()}", e)
+                        return@fold accumulator
+                    }
                     logger.info("Consumed record with orderId: ${orders.orderId}, and updated total count to: $newCount")
                     newCount
                 }
