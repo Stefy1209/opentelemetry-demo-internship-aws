@@ -344,10 +344,16 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		Units:        0,
 		Nanos:        0,
 	}
-	total = money.Must(money.Sum(total, prep.shippingCostLocalized))
+	total, err = money.Sum(total, prep.shippingCostLocalized)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to calculate order total: %v", err)
+	}
 	for _, it := range prep.orderItems {
 		multPrice := money.MultiplySlow(it.Cost, uint32(it.GetItem().GetQuantity()))
-		total = money.Must(money.Sum(total, multPrice))
+		total, err = money.Sum(total, multPrice)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to calculate order total: %v", err)
+		}
 	}
 
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
