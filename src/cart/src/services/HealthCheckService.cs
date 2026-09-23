@@ -31,16 +31,6 @@ namespace cart.healthcheck
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
 
-            #pragma warning disable CA2016 // OpenFeature does not support CancellationToken
-            // Await the async call instead of blocking
-            bool isSet = await _featureClient.GetBooleanValueAsync("failedReadinessProbe", false); // Replace with actual check
-            #pragma warning restore CA2016
-            if (isSet)
-            {
-                return HealthCheckResult.Unhealthy("connection failed");
-
-            }
-
             return HealthCheckResult.Healthy("healthy");
         }
     }
