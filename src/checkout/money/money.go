@@ -108,13 +108,22 @@ func Sum(l, r *pb.Money) (*pb.Money, error) {
 		CurrencyCode: l.GetCurrencyCode()}, nil
 }
 
-// MultiplySlow is a slow multiplication operation done through adding the value
-// to itself n-1 times.
+// MultiplySlow multiplies a money value by n.
 func MultiplySlow(m *pb.Money, n uint32) *pb.Money {
-	out := m
-	for n > 1 {
-		out = Must(Sum(out, m))
-		n--
+	if n <= 1 {
+		return m
 	}
-	return out
+	if !IsValid(m) {
+		panic(ErrInvalidValue)
+	}
+
+	units := m.GetUnits() * int64(n)
+	nanos := int64(m.GetNanos()) * int64(n)
+	units += nanos / nanosMod
+	nanos %= nanosMod
+
+	return &pb.Money{
+		Units:        units,
+		Nanos:        int32(nanos),
+		CurrencyCode: m.GetCurrencyCode()}
 }
