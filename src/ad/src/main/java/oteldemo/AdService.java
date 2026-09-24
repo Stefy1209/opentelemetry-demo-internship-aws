@@ -201,8 +201,6 @@ public final class AdService {
           logger.info("no baggage found in context");
         }
 
-        CPULoad cpuload = CPULoad.getInstance();
-        cpuload.execute(ffClient.getBooleanValue(AD_HIGH_CPU_FEATURE_FLAG, false, evaluationContext));
 
         span.setAttribute("demo.ad.context_keys", req.getContextKeysList().toString());
         span.setAttribute("demo.ad.context_keys.count", req.getContextKeysCount());
