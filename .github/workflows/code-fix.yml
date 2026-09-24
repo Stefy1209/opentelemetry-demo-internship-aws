@@ -152,18 +152,28 @@ jobs:
 
           compose = yaml.safe_load(open("compose.yaml"))
 
-          # serviciu -> (context, dockerfile), rezolvand ${VAR} ca Compose.
+          # Inlocuieste ${VAR} si ${VAR:-default} cu valoarea din .env, ca Compose.
+          def expand(value):
+              return re.sub(
+                  r"\$\{(\w+)(?::-[^}]*)?\}",
+                  lambda m: env.get(m.group(1), ""),
+                  str(value),
+              )
+
+          # serviciu -> (context, dockerfile, build args), rezolvate ca in Compose.
+          # Fara `args`, un ARG ca OTEL_JAVA_AGENT_VERSION (ad) ramane gol si
+          # ADD-ul din Dockerfile cere .../download/v/... -> 404.
           buildable = {}
           for name, svc in (compose.get("services") or {}).items():
               build = svc.get("build")
               if not isinstance(build, dict):
                   continue  # serviciu cu imagine gata facuta (kafka, grafana...)
-              dockerfile = re.sub(
-                  r"\$\{(\w+)(?::-[^}]*)?\}",
-                  lambda m: env.get(m.group(1), ""),
-                  build.get("dockerfile", "Dockerfile"),
-              )
-              buildable[name] = (build.get("context", "."), os.path.normpath(dockerfile))
+              dockerfile = expand(build.get("dockerfile", "Dockerfile"))
+              args = build.get("args") or {}
+              if isinstance(args, list):
+                  args = dict(a.partition("=")[::2] for a in args)
+              build_args = "\n".join(f"{k}={expand(v)}" for k, v in args.items())
+              buildable[name] = (build.get("context", "."), os.path.normpath(dockerfile), build_args)
 
           candidates = [c.strip() for c in open("candidates.txt") if c.strip()]
 
@@ -174,10 +184,10 @@ jobs:
                   # compose, deci nu producem imagine pentru ele.
                   skipped.append(svc)
                   continue
-              context, dockerfile = buildable[svc]
+              context, dockerfile, build_args = buildable[svc]
               if not os.path.isfile(dockerfile):
                   raise SystemExit(f"::error::{svc}: {dockerfile} nu exista in repo.")
-              include.append({"service": svc, "context": context, "dockerfile": dockerfile})
+              include.append({"service": svc, "context": context, "dockerfile": dockerfile, "build_args": build_args})
 
           if skipped:
               print(f"::notice::Sarite (fara `build` in compose.yaml): {' '.join(skipped)}")
@@ -235,6 +245,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/astronomy-shop-${{ matrix.service }}:${{ github.sha }}
