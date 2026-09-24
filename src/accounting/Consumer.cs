@@ -60,8 +60,8 @@ internal class Consumer : BackgroundService
             {
                 try
                 {
-                    using var activity = MyActivitySource.StartActivity("order-consumed",  ActivityKind.Internal);
                     var consumeResult = _consumer.Consume(stoppingToken);
+                    using var activity = MyActivitySource.StartActivity("order-consumed",  ActivityKind.Internal);
                     ProcessMessage(consumeResult.Message);
                 }
                 catch (ConsumeException e)
