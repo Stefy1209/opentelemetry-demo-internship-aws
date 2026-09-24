@@ -13,15 +13,11 @@ namespace cart.services;
 public class CartService : Oteldemo.CartService.CartServiceBase
 {
     private static readonly Empty Empty = new();
-    private readonly ICartStore _badCartStore;
     private readonly ICartStore _cartStore;
-    private readonly IFeatureClient _featureFlagHelper;
 
-    public CartService(ICartStore cartStore, ICartStore badCartStore, IFeatureClient featureFlagService)
+    public CartService(ICartStore cartStore, IFeatureClient featureFlagService)
     {
-        _badCartStore = badCartStore;
         _cartStore = cartStore;
-        _featureFlagHelper = featureFlagService;
     }
 
     public override async Task<Empty> AddItem(AddItemRequest request, ServerCallContext context)
