@@ -36,8 +36,6 @@ from metrics import (
     init_metrics
 )
 
-cached_ids = []
-first_run = True
 
 class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
     def ListRecommendations(self, request, context):
@@ -65,8 +63,6 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
 
 
 def get_product_list(request_product_ids):
-    global first_run
-    global cached_ids
     with tracer.start_as_current_span("get_product_list") as span:
         max_responses = 5
 
@@ -74,26 +70,9 @@ def get_product_list(request_product_ids):
         request_product_ids_str = ''.join(request_product_ids)
         request_product_ids = request_product_ids_str.split(',')
 
-        # Feature flag scenario - Cache Leak
-        if check_feature_flag("recommendationCacheFailure"):
-            span.set_attribute("demo.feature_flag.recommendation_cache", True)
-            if random.random() < 0.5 or first_run:
-                first_run = False
-                span.set_attribute("demo.recommendation.cache_hit", False)
-                logger.info("get_product_list: cache miss")
-                cat_response = product_catalog_stub.ListProducts(demo_pb2.Empty())
-                response_ids = [x.id for x in cat_response.products]
-                cached_ids = cached_ids + response_ids
-                cached_ids = cached_ids + cached_ids[:len(cached_ids) // 4]
-                product_ids = cached_ids
-            else:
-                span.set_attribute("demo.recommendation.cache_hit", True)
-                logger.info("get_product_list: cache hit")
-                product_ids = cached_ids
-        else:
-            span.set_attribute("demo.feature_flag.recommendation_cache", False)
-            cat_response = product_catalog_stub.ListProducts(demo_pb2.Empty())
-            product_ids = [x.id for x in cat_response.products]
+        span.set_attribute("demo.feature_flag.recommendation_cache", False)
+        cat_response = product_catalog_stub.ListProducts(demo_pb2.Empty())
+        product_ids = [x.id for x in cat_response.products]
 
         span.set_attribute("demo.product.count", len(product_ids))
 
