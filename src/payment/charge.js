@@ -37,15 +37,12 @@ module.exports.charge = async request => {
 
     await OpenFeature.setProviderAndWait(flagProvider);
 
-    const numberVariant = await OpenFeature.getClient().getNumberValue("paymentFailure", 0);
+    const paymentUnreachable = await OpenFeature.getClient().getBooleanValue("paymentUnreachable", false);
 
-    if (numberVariant > 0) {
-      // n% chance to fail with demo.user_context.loyalty_level=gold
-      if (Math.random() < numberVariant) {
-        span.setAttributes({'demo.user_context.loyalty_level': 'gold' });
+    if (paymentUnreachable) {
+      span.setAttributes({'demo.user_context.loyalty_level': 'gold' });
 
-        throw new Error('Payment request failed. Invalid token. demo.user_context.loyalty_level=gold');
-      }
+      throw new Error('Payment request failed. Invalid token. demo.user_context.loyalty_level=gold');
     }
 
     const {
