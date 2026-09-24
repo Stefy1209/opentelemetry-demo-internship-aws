@@ -13,15 +13,11 @@ namespace cart.services;
 public class CartService : Oteldemo.CartService.CartServiceBase
 {
     private static readonly Empty Empty = new();
-    private readonly ICartStore _badCartStore;
     private readonly ICartStore _cartStore;
-    private readonly IFeatureClient _featureFlagHelper;
 
-    public CartService(ICartStore cartStore, ICartStore badCartStore, IFeatureClient featureFlagService)
+    public CartService(ICartStore cartStore, IFeatureClient featureFlagService)
     {
-        _badCartStore = badCartStore;
         _cartStore = cartStore;
-        _featureFlagHelper = featureFlagService;
     }
 
     public override async Task<Empty> AddItem(AddItemRequest request, ServerCallContext context)
@@ -79,15 +75,7 @@ public class CartService : Oteldemo.CartService.CartServiceBase
 
         try
         {
-            var cartFailureRate = await _featureFlagHelper.GetDoubleValueAsync("cartFailure", 0);
-            if (cartFailureRate > 0 && Random.Shared.NextDouble() < cartFailureRate)
-            {
-                await _badCartStore.EmptyCartAsync(request.UserId);
-            }
-            else
-            {
-                await _cartStore.EmptyCartAsync(request.UserId);
-            }
+            await _cartStore.EmptyCartAsync(request.UserId);
         }
         catch (RpcException ex)
         {
