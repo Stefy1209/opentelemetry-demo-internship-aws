@@ -1,0 +1,320 @@
+# =============================================================================
+# SABLON - se copiaza in FORK-UL Astronomy Shop, ca .github/workflows/code-fix.yml
+# =============================================================================
+#
+# Fork-ul: https://github.com/Stefy1209/opentelemetry-demo-internship-aws
+#          (fork al open-telemetry/opentelemetry-demo, branch implicit `main`)
+#
+# ACEST FISIER NU RULEAZA IN REPO-UL OCTOGUARD.
+# Sta in docs/ ca sa fie versionat si revizuit odata cu restul pipeline-ului,
+# dar locul lui de executie e fork-ul. Daca l-ai pune in .github/workflows/ aici,
+# ar porni pe fiecare push si ar cauta un `src/` care nu exista.
+#
+# CE FACE, DUPA CE UN OM A APROBAT SI A FACUT MERGE PE main IN FORK:
+#   1. Detecteaza ce servicii din src/ s-au schimbat.
+#   2. Construieste imaginea fiecaruia (linux/amd64).
+#   3. O impinge in ECR-ul OctoGuard, cu tag = SHA-ul commit-ului.
+#   4. Deschide un PR in repo-ul OctoGuard care schimba `imageOverride` pentru
+#      acele servicii, in k8s/base/demo-app/values-opentelemetry-demo.yaml.
+#
+# CE NU FACE, INTENTIONAT: nu atinge clusterul. Nu are acces la EKS si nici nu
+# poate obtine unul - rolul pe care il asuma (octoguard-gha-ecr-push) nu are
+# nicio permisiune EKS si nu are access entry in cluster. Deploy-ul ramane in
+# deploy.yml, in repo-ul OctoGuard, dupa a doua aprobare umana.
+#
+# DE CE UN PR SI NU UN DEPLOY DIRECT:
+#   Un `repository_dispatch` catre repo-ul OctoGuard ar deploya imediat, cu o
+#   singura aprobare. Dar ar insemna ca un merge in fork schimba productia fara
+#   ca nimeni sa vada diff-ul de cluster. PR-ul de bump costa un click in plus si
+#   trece prin exact acelasi `kubectl diff` comentat pe PR ca orice CONFIG FIX.
+#
+# ---------------------------------------------------------------------------
+# DE CE NU GHICIM CALEA CATRE DOCKERFILE (verificat pe fork, 2026-09-06)
+# ---------------------------------------------------------------------------
+#   Doua capcane, amandoua tacute daca le ratezi:
+#
+#   1. CONTEXTUL DE BUILD E RADACINA REPO-ULUI, nu src/<serviciu>/.
+#      Toate cele 16 servicii din compose.yaml au `context: ./`, fiindca au
+#      nevoie de `pb/` (protobuf-urile partajate) si de `src/shared/`. Cu
+#      `context: src/<serviciu>`, build-ul pica la COPY cu "file not found".
+#
+#   2. `cart` NU e la src/cart/Dockerfile, ci la src/cart/src/Dockerfile.
+#      Si numele variabilelor nu se deduc mecanic din numele serviciului:
+#      fraud-detection -> FRAUD_DOCKERFILE, postgresql -> POSTGRES_DOCKERFILE.
+#
+#   De-aia pasul de detectie citeste `compose.yaml` + `.env` din repo si rezolva
+#   `${X_DOCKERFILE}` exact cum o face Docker Compose. Sursa de adevar e repo-ul,
+#   nu o conventie presupusa de noi - si ramane corecta si dupa un merge din
+#   upstream care muta vreun Dockerfile.
+#
+# ---------------------------------------------------------------------------
+# CE TREBUIE CONFIGURAT IN FORK INAINTE (o singura data)
+# ---------------------------------------------------------------------------
+#   Secret   AWS_ROLE_ARN_ECR      - output-ul Terraform `gha_ecr_role_arn`
+#   Secret   OCTOGUARD_REPO_TOKEN  - token GitHub cu `contents: write` +
+#                                    `pull-requests: write` DOAR pe repo-ul
+#                                    OctoGuard. Ideal un GitHub App installation
+#                                    token; un fine-grained PAT merge si el.
+#                                    E singurul credential de lunga durata din
+#                                    tot pipeline-ul, si NU e o cheie AWS.
+#   Variable ECR_REGISTRY          - <cont>.dkr.ecr.eu-west-3.amazonaws.com
+#
+#   Si in Terraform, in repo-ul OctoGuard (variables-astronomy-shop.tf):
+#     astronomy_shop_fork_repo = "Stefy1209/opentelemetry-demo-internship-aws"
+#     astronomy_shop_services  = [...]   # un repo ECR per serviciu construit
+#
+#   Numele repo-urilor ECR sunt `astronomy-shop-<serviciu>`, generate din
+#   var.astronomy_shop_services in terraform/ecr.tf. Un serviciu care nu e in
+#   lista aia n-are unde sa fie impins: rolul de push enumera repository-urile
+#   explicit, deci primesti AccessDenied, nu un repo creat din greseala.
+
+name: CODE FIX - build & propune deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+
+  # Pentru cazul pe care detectia automata NU il acopera: o schimbare in `pb/`
+  # sau `src/shared/` afecteaza mai multe servicii deodata, dar nu apare ca o
+  # modificare in src/<serviciu>/. Atunci le enumeri manual aici.
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Servicii de construit, separate prin spatiu (ex: payment cart)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write   # OIDC catre AWS
+  contents: read    # checkout
+
+concurrency:
+  group: code-fix-build
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-3
+  OCTOGUARD_REPO: computacenter-ro/internship-2026-octoguard-aws
+  VALUES_FILE: k8s/base/demo-app/values-opentelemetry-demo.yaml
+
+jobs:
+  detect:
+    name: Ce servicii s-au schimbat
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      services: ${{ steps.resolve.outputs.services }}
+      any: ${{ steps.resolve.outputs.any }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Doua commit-uri: avem nevoie de parintele lui HEAD ca sa facem diff.
+          fetch-depth: 2
+
+      # Construim DOAR serviciile atinse. Astronomy Shop are 32 de directoare in
+      # src/; a le construi pe toate la fiecare fix ar dura zeci de minute si ar
+      # umple ECR-ul cu imagini identice.
+      - name: Detecteaza si rezolva Dockerfile-urile
+        id: resolve
+        env:
+          MANUAL_SERVICES: ${{ inputs.services }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+
+          # Lista de candidati: fie ce a dat omul la dispatch, fie ce s-a
+          # schimbat in commit. HEAD^ = primul parinte, adica varful anterior al
+          # lui main si pentru merge commit, si pentru squash merge.
+          if [ -n "${MANUAL_SERVICES:-}" ]; then
+            printf '%s\n' $MANUAL_SERVICES > candidates.txt
+          elif git rev-parse --verify -q HEAD^ >/dev/null; then
+            git diff --name-only HEAD^ HEAD -- 'src/*' | cut -d/ -f2 | sort -u > candidates.txt
+          else
+            echo "Nu exista commit parinte (primul push?) - nu construiesc nimic."
+            : > candidates.txt
+          fi
+          echo "Candidati:"; cat candidates.txt
+
+          python3 - <<'EOF'
+          import json, os, re, yaml
+
+          # `.env` din repo, in forma pe care o citeste si Docker Compose.
+          env = {}
+          with open(".env") as fh:
+              for line in fh:
+                  line = line.strip()
+                  if line and not line.startswith("#") and "=" in line:
+                      k, _, v = line.partition("=")
+                      env[k.strip()] = v.strip().strip('"').strip("'")
+
+          compose = yaml.safe_load(open("compose.yaml"))
+
+          # serviciu -> (context, dockerfile), rezolvand ${VAR} ca Compose.
+          buildable = {}
+          for name, svc in (compose.get("services") or {}).items():
+              build = svc.get("build")
+              if not isinstance(build, dict):
+                  continue  # serviciu cu imagine gata facuta (kafka, grafana...)
+              dockerfile = re.sub(
+                  r"\$\{(\w+)(?::-[^}]*)?\}",
+                  lambda m: env.get(m.group(1), ""),
+                  build.get("dockerfile", "Dockerfile"),
+              )
+              buildable[name] = (build.get("context", "."), os.path.normpath(dockerfile))
+
+          candidates = [c.strip() for c in open("candidates.txt") if c.strip()]
+
+          include, skipped = [], []
+          for svc in dict.fromkeys(candidates):  # unic, cu ordinea pastrata
+              if svc not in buildable:
+                  # src/shared, src/grafana, src/kafka etc. - n-au build in
+                  # compose, deci nu producem imagine pentru ele.
+                  skipped.append(svc)
+                  continue
+              context, dockerfile = buildable[svc]
+              if not os.path.isfile(dockerfile):
+                  raise SystemExit(f"::error::{svc}: {dockerfile} nu exista in repo.")
+              include.append({"service": svc, "context": context, "dockerfile": dockerfile})
+
+          if skipped:
+              print(f"::notice::Sarite (fara `build` in compose.yaml): {' '.join(skipped)}")
+
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as fh:
+              fh.write(f"any={'true' if include else 'false'}\n")
+              fh.write(f"matrix={json.dumps({'include': include})}\n")
+              fh.write(f"services={json.dumps([i['service'] for i in include])}\n")
+
+          for item in include:
+              print(f"  {item['service']:20} context={item['context']:4} {item['dockerfile']}")
+          if not include:
+              print("Niciun serviciu constructibil - restul workflow-ului se sare.")
+          EOF
+
+  build:
+    name: Build & push ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Rol fara nicio permisiune EKS. Asumabil DOAR din refs/heads/main al
+          # acestui fork - un PR nu poate impinge in ECR.
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_ECR }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: fork-ecr-push-${{ matrix.service }}
+
+      - name: Login ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configurare Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # context/file vin din compose.yaml + .env, nu ghicite. Vezi explicatia
+      # din capul fisierului: contextul e radacina repo-ului pentru TOATE
+      # serviciile, iar cart isi tine Dockerfile-ul la src/cart/src/Dockerfile.
+      #
+      # linux/amd64 obligatoriu: nodurile EKS sunt Intel (m5.large).
+      # Tag = SHA-ul commit-ului, niciodata :latest - override-urile din chart nu
+      # au `imagePullPolicy: Always`, deci un tag mobil ar ramane in cache-ul
+      # nodului si fix-ul n-ar ajunge niciodata in rulare.
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/astronomy-shop-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  propose:
+    name: Deschide PR-ul de bump in OctoGuard
+    needs: [detect, build]
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout la repo-ul OctoGuard, nu la fork.
+      - name: Checkout OctoGuard
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OCTOGUARD_REPO }}
+          token: ${{ secrets.OCTOGUARD_REPO_TOKEN }}
+          ref: main
+
+      # Editam YAML-ul cu ruamel, nu cu sed: pastreaza comentariile si
+      # formatarea, deci diff-ul pe care il citeste omul contine EXACT liniile
+      # schimbate, nu si reformatari colaterale. Fisierul are ~100 de linii de
+      # comentarii care explica de ce serviciile AI sunt dezactivate - un
+      # `yaml.dump` obisnuit le-ar sterge pe toate.
+      - name: Actualizeaza imageOverride
+        env:
+          SERVICES: ${{ needs.detect.outputs.services }}
+          IMAGE_TAG: ${{ github.sha }}
+          REGISTRY: ${{ vars.ECR_REGISTRY }}
+        run: |
+          set -euo pipefail
+          pip install --quiet ruamel.yaml
+          python3 - <<'EOF'
+          import json, os
+          from ruamel.yaml import YAML
+
+          path = os.environ["VALUES_FILE"]
+          services = json.loads(os.environ["SERVICES"])
+          tag = os.environ["IMAGE_TAG"]
+          registry = os.environ["REGISTRY"]
+          if not registry:
+              raise SystemExit("::error::Variabila ECR_REGISTRY nu e setata in fork.")
+
+          yaml = YAML()
+          yaml.preserve_quotes = True
+          with open(path) as fh:
+              doc = yaml.load(fh)
+
+          # `components` exista deja in fisier; setdefault ii adauga cheile, nu
+          # il inlocuieste - altfel s-ar pierde `enabled: false` de pe
+          # agent/chatbot/mcp/firepit si ar porni 4 pod-uri grele in plus.
+          components = doc.setdefault("components", {})
+          for svc in services:
+              entry = components.setdefault(svc, {})
+              entry["imageOverride"] = {
+                  "repository": f"{registry}/astronomy-shop-{svc}",
+                  "tag": tag,
+              }
+              print(f"  {svc} -> {tag}")
+
+          with open(path, "w") as fh:
+              yaml.dump(doc, fh)
+          EOF
+          git diff --stat
+
+      - name: Deschide PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.OCTOGUARD_REPO_TOKEN }}
+          branch: code-fix/${{ github.sha }}
+          commit-message: "demo-app: bump imagini din fork la ${{ github.sha }}"
+          title: "CODE FIX: bump imagini Astronomy Shop la ${{ github.sha }}"
+          body: |
+            Fix de COD aprobat si merge-uit in fork-ul Astronomy Shop.
+            Imaginile sunt deja construite si in ECR; acest PR doar le pointeaza.
+
+            - Servicii: `${{ needs.detect.outputs.services }}`
+            - Tag imagine: `${{ github.sha }}`
+            - Commit in fork: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+
+            La deschiderea acestui PR, `deploy.yml` ruleaza `kubectl diff` si
+            posteaza mai jos exact ce se schimba in cluster. Merge-ul aplica.
