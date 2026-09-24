@@ -28,6 +28,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -110,8 +111,13 @@ public final class AdService {
     healthMgr = new HealthStatusManager();
 
     // Create a flagd instance with OpenTelemetry
+    String flagdHost = System.getenv("FLAGD_HOST");
+    int flagdPort = Integer.parseInt(System.getenv("FLAGD_PORT"));
     FlagdOptions options =
         FlagdOptions.builder()
+            .withHost(flagdHost)
+            .withPort(flagdPort)
+            .withRequestTimeout(Duration.ofSeconds(5))
             .withGlobalTelemetry(true)
             .build();
 
@@ -201,9 +207,6 @@ public final class AdService {
           logger.info("no baggage found in context");
         }
 
-        CPULoad cpuload = CPULoad.getInstance();
-        cpuload.execute(ffClient.getBooleanValue(AD_HIGH_CPU_FEATURE_FLAG, false, evaluationContext));
-
         span.setAttribute("demo.ad.context_keys", req.getContextKeysList().toString());
         span.setAttribute("demo.ad.context_keys.count", req.getContextKeysCount());
         if (req.getContextKeysCount() > 0) {
@@ -233,17 +236,6 @@ public final class AdService {
             1,
             Attributes.of(
                 adRequestTypeKey, adRequestType.name(), adResponseTypeKey, adResponseType.name()));
-
-        // Throw 1/10 of the time to simulate a failure when the feature flag is enabled
-        if (ffClient.getBooleanValue(AD_FAILURE, false, evaluationContext) && random.nextInt(10) == 0) {
-          throw new StatusRuntimeException(Status.UNAVAILABLE);
-        }
-
-        if (ffClient.getBooleanValue(AD_MANUAL_GC_FEATURE_FLAG, false, evaluationContext)) {
-          logger.warn("Feature Flag " + AD_MANUAL_GC_FEATURE_FLAG + " enabled, performing a manual gc now");
-          GarbageCollectionTrigger gct = new GarbageCollectionTrigger();
-          gct.doExecute();
-        }
 
         AdResponse reply = AdResponse.newBuilder().addAllAds(allAds).build();
         responseObserver.onNext(reply);
