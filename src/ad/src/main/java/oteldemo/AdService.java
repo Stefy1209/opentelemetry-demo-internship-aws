@@ -28,6 +28,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -109,9 +110,35 @@ public final class AdService {
         "Prometheus metrics endpoint started, listening on " + prometheusServer.getPort() + "/metrics");
     healthMgr = new HealthStatusManager();
 
+    String flagdHost =
+        Optional.ofNullable(System.getenv("FLAGD_HOST"))
+            .filter(host -> !host.isBlank())
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "environment vars: FLAGD_HOST must not be null or blank"));
+    String flagdPortValue =
+        Optional.ofNullable(System.getenv("FLAGD_PORT"))
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "environment vars: FLAGD_PORT must not be null"));
+    int flagdPort;
+    try {
+      flagdPort = Integer.parseInt(flagdPortValue);
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException("environment vars: FLAGD_PORT must be a valid port", e);
+    }
+    if (flagdPort < 1 || flagdPort > 65535) {
+      throw new IllegalStateException("environment vars: FLAGD_PORT must be between 1 and 65535");
+    }
+
     // Create a flagd instance with OpenTelemetry
     FlagdOptions options =
         FlagdOptions.builder()
+            .withHost(flagdHost)
+            .withPort(flagdPort)
+            .withStreamTimeout(Duration.ofSeconds(10))
             .withGlobalTelemetry(true)
             .build();
 
