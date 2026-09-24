@@ -28,6 +28,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.exporter.httpserver.HTTPServer;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -110,8 +111,13 @@ public final class AdService {
     healthMgr = new HealthStatusManager();
 
     // Create a flagd instance with OpenTelemetry
+    String flagdHost = System.getenv("FLAGD_HOST");
+    int flagdPort = Integer.parseInt(System.getenv("FLAGD_PORT"));
     FlagdOptions options =
         FlagdOptions.builder()
+            .withHost(flagdHost)
+            .withPort(flagdPort)
+            .withRequestTimeout(Duration.ofSeconds(5))
             .withGlobalTelemetry(true)
             .build();
 
